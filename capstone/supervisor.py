@@ -11,17 +11,30 @@ Two compiled agents are exposed for two different callers:
 """
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.tools import tool
 from langgraph.checkpoint.postgres import PostgresSaver
 
 from .config import make_llm
 from .conversation import conversation_agent
 from .db import sql_query_agent
+from .memory_store import add_memory, list_memories
 from .rag import rag_agent
 from .state_db import get_state_pool
 from .visualization import visualization_agent
 from .web_research import web_research_team
 
-TOOLS = [sql_query_agent, web_research_team, visualization_agent, rag_agent, conversation_agent]
+
+@tool
+def remember_fact(fact: str) -> str:
+    """Save a fact about the user or their preferences that should carry
+    over into ALL future conversations, not just this one -- e.g. their
+    name, role, or a lasting preference. Use this when the user asks you to
+    remember something, or shares something clearly meant to persist."""
+    add_memory(fact)
+    return f"Got it, I'll remember that: {fact}"
+
+
+TOOLS = [sql_query_agent, web_research_team, visualization_agent, rag_agent, conversation_agent, remember_fact]
 
 SYSTEM_PROMPT = (
     "You are the Main Supervisor of a multi-agent assistant. Route each "
@@ -43,7 +56,10 @@ SYSTEM_PROMPT = (
     "once with a rephrased query if that seems likely to help.\n"
     "After calling visualization_agent, the chart is already rendered "
     "separately by the UI -- do NOT add a markdown image link or any fake "
-    "URL for it in your reply; just briefly describe what it shows."
+    "URL for it in your reply; just briefly describe what it shows.\n"
+    "- remember_fact: call this when the user asks you to remember "
+    "something, or states a lasting fact/preference about themselves -- it "
+    "carries over into every future conversation, not just this one."
 )
 
 _checkpointer = PostgresSaver(get_state_pool())
@@ -66,9 +82,24 @@ def delete_memory(thread_id: str) -> None:
     _checkpointer.delete_thread(thread_id)
 
 
+def build_input_messages(thread_id: str, message: str) -> list:
+    """The human message, prefixed with known cross-chat memories -- but
+    only on a thread's first turn, so they don't get re-injected (and
+    re-checkpointed) on every single message in a long conversation."""
+    state = supervisor.get_state({"configurable": {"thread_id": thread_id}})
+    is_new_thread = not (state.values and state.values.get("messages"))
+    messages = [("human", message)]
+    if is_new_thread:
+        memories = list_memories()
+        if memories:
+            memory_text = "\n".join(f"- {m}" for m in memories)
+            messages.insert(0, ("system", f"Known facts about the user from past conversations:\n{memory_text}"))
+    return messages
+
+
 def ask(thread_id: str, message: str) -> dict:
     config = {"configurable": {"thread_id": thread_id}, "tags": ["capstone", "supervisor"]}
-    result = supervisor.invoke({"messages": [("human", message)]}, config=config)
+    result = supervisor.invoke({"messages": build_input_messages(thread_id, message)}, config=config)
     return {"thread_id": thread_id, "question": message, "messages": result["messages"]}
 
 

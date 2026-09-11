@@ -29,7 +29,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from capstone.chat_store import create_chat, delete_chat, list_chats, update_chat_title
-from capstone.supervisor import delete_memory, load_history, supervisor
+from capstone.supervisor import build_input_messages, delete_memory, load_history, supervisor
 from capstone.visualization import CHART_SPEC_PREFIX
 
 load_dotenv()
@@ -94,7 +94,7 @@ def post_message(chat_id: str, body: SendMessageBody):
             yield {"event": "title", "data": json.dumps({"title": title})}
 
         for msg, metadata in supervisor.stream(
-            {"messages": [("human", body.message)]}, config=config, stream_mode="messages"
+            {"messages": build_input_messages(chat_id, body.message)}, config=config, stream_mode="messages"
         ):
             if isinstance(msg, ToolMessage):
                 if isinstance(msg.content, str) and msg.content.startswith(CHART_SPEC_PREFIX):

@@ -35,7 +35,7 @@ import streamlit.components.v1 as components
 from langchain_core.messages import AIMessageChunk, ToolMessage
 
 from capstone.chat_store import create_chat, list_chats, update_chat_title
-from capstone.supervisor import TOOLS, load_history, supervisor
+from capstone.supervisor import TOOLS, build_input_messages, load_history, supervisor
 from capstone.visualization import CHART_SPEC_PREFIX
 
 st.set_page_config(page_title="Capstone Multi-Agent Assistant", page_icon="🤖")
@@ -143,7 +143,9 @@ if question:
         placeholder = st.empty()
         placeholder.markdown("▌")
         for msg, metadata in supervisor.stream(
-            {"messages": [("human", question)]}, config=config, stream_mode="messages"
+            {"messages": build_input_messages(st.session_state.active_chat_id, question)},
+            config=config,
+            stream_mode="messages",
         ):
             if isinstance(msg, ToolMessage):
                 if isinstance(msg.content, str) and msg.content.startswith(CHART_SPEC_PREFIX):
