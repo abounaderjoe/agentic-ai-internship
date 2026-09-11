@@ -12,3 +12,5 @@ streamlit
 langgraph-checkpoint-postgres
 psycopg[binary]
 fastapi
+sse-starlette
+uvicorn
