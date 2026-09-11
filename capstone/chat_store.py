@@ -21,3 +21,8 @@ def create_chat(chat_id: str, title: str) -> None:
 def update_chat_title(chat_id: str, title: str) -> None:
     with get_state_pool().connection() as conn:
         conn.execute("UPDATE chats SET title = %s WHERE id = %s", (title, chat_id))
+
+
+def delete_chat(chat_id: str) -> None:
+    with get_state_pool().connection() as conn:
+        conn.execute("DELETE FROM chats WHERE id = %s", (chat_id,))

@@ -59,6 +59,13 @@ supervisor = create_agent(
 supervisor_for_studio = create_agent(make_llm(), TOOLS, system_prompt=SYSTEM_PROMPT)
 
 
+def delete_memory(thread_id: str) -> None:
+    """Deletes a thread's checkpoint data (its agent memory). Called
+    alongside chat_store.delete_chat() so removing a chat also clears what
+    the agent remembers about it, not just the sidebar entry."""
+    _checkpointer.delete_thread(thread_id)
+
+
 def ask(thread_id: str, message: str) -> dict:
     config = {"configurable": {"thread_id": thread_id}, "tags": ["capstone", "supervisor"]}
     result = supervisor.invoke({"messages": [("human", message)]}, config=config)

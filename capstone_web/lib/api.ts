@@ -20,6 +20,11 @@ export async function getMessages(chatId: string): Promise<ChatMessageItem[]> {
   return res.json();
 }
 
+export async function deleteChat(chatId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/chats/${chatId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`deleteChat failed: ${res.status}`);
+}
+
 export type StreamEvent =
   | { event: "title"; data: { title: string } }
   | { event: "token"; data: { text: string } }

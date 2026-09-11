@@ -41,15 +41,26 @@ export function ChartMessage({ spec }: { spec: ChartSpec }) {
       },
     ],
   };
+  // Chart.js defaults to black text, invisible on our dark background --
+  // explicitly light-color the title, legend, and axis ticks/grid.
   const options = {
     responsive: true,
+    color: "#d4d4d4",
     plugins: {
-      title: { display: !!spec.title, text: spec.title ?? "" },
+      title: { display: !!spec.title, text: spec.title ?? "", color: "#e5e5e5" },
+      legend: { labels: { color: "#d4d4d4" } },
     },
+    scales:
+      spec.type === "pie"
+        ? undefined
+        : {
+            x: { ticks: { color: "#d4d4d4" }, grid: { color: "rgba(255,255,255,0.08)" } },
+            y: { ticks: { color: "#d4d4d4" }, grid: { color: "rgba(255,255,255,0.08)" } },
+          },
   };
 
   return (
-    <div className="max-w-md rounded-lg border border-black/10 bg-white p-4 dark:border-white/10 dark:bg-neutral-900">
+    <div className="max-w-md rounded-xl border border-neutral-700 bg-neutral-800 p-4">
       {spec.type === "bar" && <Bar data={data} options={options} />}
       {spec.type === "pie" && <Pie data={data} options={options} />}
       {spec.type === "line" && <Line data={data} options={options} />}

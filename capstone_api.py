@@ -28,8 +28,8 @@ from langchain_core.messages import AIMessageChunk, ToolMessage
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from capstone.chat_store import create_chat, list_chats, update_chat_title
-from capstone.supervisor import load_history, supervisor
+from capstone.chat_store import create_chat, delete_chat, list_chats, update_chat_title
+from capstone.supervisor import delete_memory, load_history, supervisor
 from capstone.visualization import CHART_SPEC_PREFIX
 
 load_dotenv()
@@ -64,6 +64,13 @@ def post_chat() -> dict:
     chat_id = str(uuid.uuid4())
     create_chat(chat_id, NEW_CHAT_TITLE)
     return {"id": chat_id, "title": NEW_CHAT_TITLE}
+
+
+@app.delete("/chats/{chat_id}")
+def delete_chat_endpoint(chat_id: str) -> dict:
+    delete_chat(chat_id)
+    delete_memory(chat_id)
+    return {"deleted": chat_id}
 
 
 @app.get("/chats/{chat_id}/messages")
