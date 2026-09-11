@@ -1,0 +1,9 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "exercise3": "./exercise3_multi_node_graph.py:graph_builder",
+    "exercise4": "./exercise4_agent_with_tools.py:agent",
+    "capstone": "capstone.supervisor:supervisor_for_studio"
+  },
+  "env": ".env"
+}

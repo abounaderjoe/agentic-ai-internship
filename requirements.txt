@@ -1,0 +1,14 @@
+langchain
+langgraph
+langchain-groq
+langchain-community
+langsmith
+fastembed
+python-dotenv
+sqlalchemy
+psycopg2-binary
+ddgs
+streamlit
+langgraph-checkpoint-postgres
+psycopg[binary]
+fastapi

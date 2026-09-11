@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.idea/
+.langgraph_api/
+
+# capstone_web (Next.js)
+capstone_web/node_modules/
+capstone_web/.next/
+capstone_web/out/
+capstone_web/.env*
+capstone_web/*.tsbuildinfo
+capstone_web/next-env.d.ts
