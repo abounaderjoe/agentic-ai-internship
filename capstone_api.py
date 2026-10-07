@@ -24,7 +24,7 @@ import uuid
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from langchain_core.messages import AIMessageChunk, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
@@ -93,16 +93,32 @@ def post_message(chat_id: str, body: SendMessageBody):
             update_chat_title(chat_id, title)
             yield {"event": "title", "data": json.dumps({"title": title})}
 
+        streamed_any = False
+        got_chart = False
         for msg, metadata in supervisor.stream(
-            {"messages": build_input_messages(chat_id, body.message)}, config=config, stream_mode="messages"
+            {"messages": build_input_messages(chat_id, body.message), "hops": 0, "task": ""},
+            config=config,
+            stream_mode="messages",
         ):
-            if isinstance(msg, ToolMessage):
+            if isinstance(msg, AIMessage) and not isinstance(msg, AIMessageChunk):
                 if isinstance(msg.content, str) and msg.content.startswith(CHART_SPEC_PREFIX):
                     spec = json.loads(msg.content[len(CHART_SPEC_PREFIX):])
+                    got_chart = True
                     yield {"event": "chart", "data": json.dumps(spec)}
                 continue
-            if metadata.get("langgraph_node") == "model" and isinstance(msg, AIMessageChunk) and msg.content:
+            if "final_answer" in (metadata.get("tags") or []) and isinstance(msg, AIMessageChunk) and msg.content:
+                streamed_any = True
                 yield {"event": "token", "data": json.dumps({"text": msg.content})}
+
+        if not streamed_any and not got_chart:
+            # A few specialist replies are plain template strings, not LLM
+            # output (SQL refusal, remember_fact confirmation, ...) -- those
+            # never arrive as tagged AIMessageChunks, so fall back to the
+            # checkpointed final message instead of sending nothing.
+            state = supervisor.get_state(config)
+            saved = state.values.get("messages", []) if state.values else []
+            if saved and isinstance(saved[-1], AIMessage):
+                yield {"event": "token", "data": json.dumps({"text": saved[-1].content})}
 
         yield {"event": "done", "data": "{}"}
 

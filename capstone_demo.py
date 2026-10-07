@@ -19,9 +19,7 @@ docker-compose.yml) before those queries will succeed.
 import sys
 import time
 
-from langchain_core.messages import ToolMessage
-
-from capstone.supervisor import TOOLS, ask
+from capstone.supervisor import SPECIALISTS, ask
 
 FAILURE_MARKERS = ("failed", "could not", "refused", "no relevant", "search_error", "no results")
 
@@ -34,14 +32,10 @@ TEST_QUERIES = [
 ]
 
 
-def _tools_used(result: dict) -> list[str]:
-    return [m.name for m in result["messages"] if isinstance(m, ToolMessage)]
-
-
 def print_result(result: dict, elapsed: float) -> bool:
     """Prints the result; returns True if the answer looks like a failure/fallback."""
     answer = result["messages"][-1].content
-    tools_used = _tools_used(result)
+    tools_used = result.get("visited", [])
     print(f"   tools used: {tools_used or 'none'}  ({elapsed:.2f}s)")
     print(f"A: {answer}\n")
     return any(marker in answer.lower() for marker in FAILURE_MARKERS)
@@ -63,7 +57,7 @@ def run_chat() -> None:
 
 
 def run_demo() -> None:
-    print(f"Tools available: {[t.name for t in TOOLS]}\n")
+    print(f"Specialists available: {[t.name for t in SPECIALISTS]}\n")
 
     fallback_count = 0
     total_time = 0.0

@@ -1,31 +1,44 @@
-"""Conversation Agent: general chit-chat with no specific data need.
+"""Conversation Node: general chit-chat with no specific data need.
 
-Conversation memory across turns is handled at the Main Supervisor level
-(see supervisor.py's MemorySaver + thread_id), not here -- this tool only
-needs the single message it's given plus whatever context the Supervisor's
-own message history already carries into that context.
+Unlike the other specialists, this one is given the FULL conversation
+history (state["messages"]) rather than just current_task()'s single
+derived string -- chit-chat is exactly the case where naturally recalling
+anything already said earlier in the thread (including the cross-chat
+memories build_input_messages() injects as a system message on a new
+thread's first turn) matters, and a single isolated string can't carry
+that.
 """
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.tools import tool
+from typing import Literal
+
+from langchain_core.messages import AIMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langgraph.types import Command
 
 from .config import make_llm
+from .state import SupervisorState
 
 _chat_prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
             "You are a friendly, helpful conversational assistant. Keep "
-            "replies natural, warm, and concise.",
+            "replies natural, warm, and concise. Use any facts already "
+            "established earlier in the conversation below.",
         ),
-        ("human", "{message}"),
+        MessagesPlaceholder("history"),
     ]
 )
 _chat_chain = _chat_prompt | make_llm(temperature=0.7)
 
 
-@tool
-def conversation_agent(message: str) -> str:
+def conversation_agent(state: SupervisorState) -> Command[Literal["supervisor"]]:
     """Handle general chit-chat, greetings, or open-ended conversation that
-    isn't a specific request for data, research, or a chart. Use this as
-    the default for casual questions with no clear specialist fit."""
-    return _chat_chain.invoke({"message": message}).content
+    isn't a specific request for data, research, or a chart."""
+    reply = _chat_chain.invoke({"history": state["messages"]}, config={"tags": ["final_answer"]}).content
+    return Command(
+        goto="supervisor",
+        update={
+            "messages": [AIMessage(content=reply, name="conversation_agent")],
+            "visited": ["conversation_agent"],
+        },
+    )

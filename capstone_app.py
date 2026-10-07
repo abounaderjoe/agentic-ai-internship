@@ -14,9 +14,10 @@ Two UX details worth knowing:
   - Streaming: the user's own message renders immediately (before the agent
     is even called), and the assistant's final answer types out token by
     token via supervisor.stream(..., stream_mode="messages"), filtered to
-    langgraph_node == "model" -- the SQL-generation and chart-spec LLM calls
-    happen as separate nested calls tagged "tools", so filtering on "model"
-    keeps the internal machinery out of the live typing effect.
+    chunks tagged "final_answer" -- each specialist node tags only its
+    user-facing chain that way, so intermediate LLM calls (SQL generation,
+    chart-spec JSON, the supervisor's own routing decision) stay out of the
+    live typing effect even though they run inside the same graph node.
 
 Chart.js is bundled locally (capstone/static/chart.umd.min.js) and inlined
 directly into the component's HTML rather than loaded via <script src=CDN>.
@@ -32,10 +33,10 @@ from pathlib import Path
 
 import streamlit as st
 import streamlit.components.v1 as components
-from langchain_core.messages import AIMessageChunk, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk
 
 from capstone.chat_store import create_chat, list_chats, update_chat_title
-from capstone.supervisor import TOOLS, build_input_messages, load_history, supervisor
+from capstone.supervisor import SPECIALISTS, build_input_messages, load_history, supervisor
 from capstone.visualization import CHART_SPEC_PREFIX
 
 st.set_page_config(page_title="Capstone Multi-Agent Assistant", page_icon="🤖")
@@ -61,6 +62,14 @@ if "chats" not in st.session_state:
         st.session_state.active_chat_id = list(st.session_state.chats.keys())[-1]  # most recently created
     else:
         st.session_state.active_chat_id = new_chat()
+
+
+def _md(text: str) -> str:
+    """Escape literal '$' before rendering -- st.markdown() auto-renders
+    $...$ as LaTeX math (via KaTeX), so an ordinary dollar amount like
+    "$62" gets treated as an opening math delimiter and mangles everything
+    up to the next '$' in the text. Escaping keeps dollar signs literal."""
+    return text.replace("$", "\\$")
 
 
 def render_chart(spec: dict, key: str) -> None:
@@ -106,7 +115,7 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Specialist agents")
-    for t in TOOLS:
+    for t in SPECIALISTS:
         st.markdown(f"**{t.name}**  \n{t.description}")
 
 active_chat = st.session_state.chats[st.session_state.active_chat_id]
@@ -122,12 +131,12 @@ for i, item in enumerate(active_chat["history"]):
             render_chart(item["spec"], key=f"{st.session_state.active_chat_id}_{i}")
     else:
         with st.chat_message(item["role"]):
-            st.markdown(item["content"])
+            st.markdown(_md(item["content"]))
 
 question = st.chat_input("Ask about sales data, request a chart, research something, or just chat...")
 if question:
     with st.chat_message("user"):
-        st.markdown(question)
+        st.markdown(_md(question))
     active_chat["history"].append({"role": "user", "content": question})
     if active_chat["title"] == NEW_CHAT_TITLE:
         active_chat["title"] = question[:40] + ("…" if len(question) > 40 else "")
@@ -143,20 +152,33 @@ if question:
         placeholder = st.empty()
         placeholder.markdown("▌")
         for msg, metadata in supervisor.stream(
-            {"messages": build_input_messages(st.session_state.active_chat_id, question)},
+            {
+                "messages": build_input_messages(st.session_state.active_chat_id, question),
+                "hops": 0,
+                "task": "",
+            },
             config=config,
             stream_mode="messages",
         ):
-            if isinstance(msg, ToolMessage):
+            if isinstance(msg, AIMessage) and not isinstance(msg, AIMessageChunk):
                 if isinstance(msg.content, str) and msg.content.startswith(CHART_SPEC_PREFIX):
                     spec = json.loads(msg.content[len(CHART_SPEC_PREFIX):])
                     chart_specs.append(spec)
                     render_chart(spec, key=f"{st.session_state.active_chat_id}_live_{len(chart_specs)}")
                 continue
-            if metadata.get("langgraph_node") == "model" and isinstance(msg, AIMessageChunk) and msg.content:
+            if "final_answer" in (metadata.get("tags") or []) and isinstance(msg, AIMessageChunk) and msg.content:
                 full_text += msg.content
-                placeholder.markdown(full_text + "▌")
-        placeholder.markdown(full_text)
+                placeholder.markdown(_md(full_text) + "▌")
+        if not full_text and not chart_specs:
+            # A few specialist replies are plain template strings, not LLM
+            # output (SQL refusal, remember_fact confirmation, ...) -- those
+            # never arrive as tagged AIMessageChunks, so fall back to the
+            # checkpointed final message instead of showing a blank reply.
+            state = supervisor.get_state(config)
+            saved = state.values.get("messages", []) if state.values else []
+            if saved and isinstance(saved[-1], AIMessage):
+                full_text = saved[-1].content
+        placeholder.markdown(_md(full_text))
 
     for spec in chart_specs:
         active_chat["history"].append({"role": "chart", "spec": spec})
